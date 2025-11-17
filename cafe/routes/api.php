@@ -1,18 +1,39 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\UsuarioController;
 use App\Http\Controllers\FilaController;
+use App\Http\Controllers\UsuarioController;
+use App\Http\Controllers\ComprasController;
 
-Route::prefix('usuarios')->group(function () {
-    Route::get('', [UsuarioController::class, 'listar']);
-    Route::get('filtro', [UsuarioController::class, 'buscarPorEmail']);
-    Route::get('{id}', [UsuarioController::class, 'buscarPorId']);
-    Route::post('', [UsuarioController::class, 'criar']);
-    Route::patch('{id}', [UsuarioController::class, 'atualizar']);
+
+Route::prefix('/usuarios')->group(function () { 
+    Route::post('', [UsuarioController::class, 'criar']); 
+    Route::post('/login', [UsuarioController::class, 'login']); 
 });
 
-Route::prefix('fila')->group(function () {
-    Route::get('', [FilaController::class, 'listar']);
-    Route::get('{pos}', [FilaController::class, 'buscarPorPosicao']);
+
+Route::middleware('jwt')->group(function () {
+   
+    
+    Route::prefix('/usuarios')->group(function () {
+        Route::get('', [UsuarioController::class, 'listar']);
+        Route::get('/filtro', [UsuarioController::class, 'buscarPorEmail']);
+        Route::get('/{id}', [UsuarioController::class, 'buscarPorId']);
+        Route::patch('/{id}', [UsuarioController::class, 'atualizar']);
+    });
+
+   
+    Route::prefix('/fila')->group(function () {
+        Route::get('', [FilaController::class, 'listar']);
+        Route::get('/{pos}', [FilaController::class, 'buscarPorPosicao']);
+        Route::post('/entrar', [FilaController::class, 'entrarNaFila']);
+        Route::delete('/sair/{usuario_id}', [FilaController::class, 'sairDaFila']);
+    });
+
+ 
+    Route::prefix('/compras')->group(function () {
+        Route::get('', [ComprasController::class, 'listar']);          
+        Route::post('', [ComprasController::class, 'comprar']);       
+        Route::patch('/{id}', [ComprasController::class, 'atualizar']); 
+    });
 });
