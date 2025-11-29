@@ -100,7 +100,27 @@ class UsuarioController extends Controller
             ], 500);
         }
     }
+public function me()
+    {
+        try {
+            
+            $usuarioLogado = auth()->user(); 
 
+            if (!$usuarioLogado) {
+                // Isso deve ser capturado pelo middleware, mas é uma proteção extra
+                return response()->json(['message' => 'Usuário não autenticado.'], 401);
+            }
+
+            return response()->json($usuarioLogado, 200);
+
+        } catch (\Exception $e) {
+            // Em caso de token expirado ou inválido
+            return response()->json([
+                'message' => 'Token inválido ou expirado.',
+                'error' => $e->getMessage()
+            ], 401);
+        }
+    }
     
    public function atualizar(string $id, UsuarioRequest $request)
 {
