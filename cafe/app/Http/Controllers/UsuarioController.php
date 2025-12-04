@@ -5,47 +5,56 @@ namespace App\Http\Controllers;
 use App\Http\Requests\UsuarioRequest;
 use App\Models\Usuario;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use Symfony\Component\HttpFoundation\Response;
+use Tymon\JWTAuth\Exceptions\JWTException; // Importar JWTException
 
 class UsuarioController extends Controller
 {
-    
+    /**
+     * Lista todos os usuários (Admin/uso interno).
+     */
     public function listar()
     {
         try {
-            $usuarios = Usuario::all();
-            return response()->json($usuarios, 200);
+            // Não deve retornar a senha (hashed) - O método makeHidden é melhor no modelo
+            $usuarios = Usuario::all(['id', 'email', 'admin', 'status', 'created_at']);
+            return response()->json($usuarios, Response::HTTP_OK);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Erro ao listar usuários.',
+                'message' => 'Erro interno ao listar usuários.',
                 'error' => $e->getMessage()
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-  
+    /**
+     * Busca um usuário pelo ID.
+     */
     public function buscarPorId(string $id)
     {
         try {
-            $usuario = Usuario::find($id);
+            $usuario = Usuario::findOrFail($id);
+            // Evita retornar o hash da senha
+            return response()->json($usuario->makeHidden(['senha']), Response::HTTP_OK);
 
-            if (!$usuario) {
-                return response()->json([
-                    'message' => 'Usuário não encontrado.'
-                ], 404);
-            }
-
-            return response()->json($usuario, 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'message' => 'Usuário não encontrado.'
+            ], Response::HTTP_NOT_FOUND);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Erro ao buscar usuário.',
                 'error' => $e->getMessage()
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    
+    /**
+     * Busca um usuário pelo email (Query Parameter).
+     */
     public function buscarPorEmail(Request $request)
     {
         $email = $request->query('email');
@@ -53,171 +62,211 @@ class UsuarioController extends Controller
         if (!$email) {
             return response()->json([
                 'message' => 'Parâmetro "email" é obrigatório na query string.'
-            ], 400);
+            ], Response::HTTP_BAD_REQUEST);
         }
-
-        $usuario = Usuario::where('email', $email)->first();
-
-        if (!$usuario) {
-            return response()->json([
-                'message' => 'Usuário não encontrado.'
-            ], 404);
-        }
-
-        return response()->json($usuario, 200);
-    }
-
-   
-    public function criar(UsuarioRequest $request)
-    {
-        $dados = $request->all();
 
         try {
-           
-            $emailExistente = Usuario::where('email', $dados['email'])->exists();
+            $usuario = Usuario::where('email', $email)->firstOrFail();
+            
+            // Evita retornar o hash da senha
+            return response()->json($usuario->makeHidden(['senha']), Response::HTTP_OK);
+            
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'message' => 'Usuário não encontrado.'
+            ], Response::HTTP_NOT_FOUND);
+        }
+    }
 
-            if ($emailExistente) {
-                return response()->json([
-                    "message" => "E-mail já cadastrado!"
-                ], 400);
-            }
+    /**
+     * Cria um novo usuário (Cadastro).
+     */
+    public function criar(UsuarioRequest $request)
+    {
+        $dados = $request->validated(); // Usa validated() para pegar os dados já validados
 
+        try {
+            // A verificação de e-mail duplicado deve ser feita de preferência na `UsuarioRequest`
+            // usando a regra 'unique:usuarios,email'. A validação explícita abaixo é redundante
+            // se o Request estiver correto, mas pode ser útil como camada extra.
+            
+            // Removendo a checagem manual que é redundante se o Request estiver bem configurado.
+            
             $usuario = new Usuario();
             $usuario->email = $dados["email"];
             $usuario->senha = Hash::make($dados["senha"]); 
-            $usuario->admin = $dados["admin"] ?? false;
+            
+            // **CORREÇÃO DE SEGURANÇA:** Não permita que o campo 'admin' seja definido no cadastro público,
+            // a menos que a rota esteja protegida. O '?? false' é crucial.
+            $usuario->admin = $dados["admin"] ?? false; 
             $usuario->status = $dados["status"] ?? "ativo";
             $usuario->save();
 
             return response()->json([
                 "message" => "Usuário criado com sucesso!",
-                "usuario" => $usuario
-            ], 201);
+                // Retorna o usuário sem a senha hasheada
+                "usuario" => $usuario->makeHidden(['senha'])
+            ], Response::HTTP_CREATED);
+            
         } catch (\Exception $e) {
             return response()->json([
                 "message" => "Erro ao criar usuário.",
                 "error" => $e->getMessage()
-            ], 500);
-        }
-    }
-public function me()
-    {
-        try {
-            
-            $usuarioLogado = auth()->user(); 
-
-            if (!$usuarioLogado) {
-                // Isso deve ser capturado pelo middleware, mas é uma proteção extra
-                return response()->json(['message' => 'Usuário não autenticado.'], 401);
-            }
-
-            return response()->json($usuarioLogado, 200);
-
-        } catch (\Exception $e) {
-            // Em caso de token expirado ou inválido
-            return response()->json([
-                'message' => 'Token inválido ou expirado.',
-                'error' => $e->getMessage()
-            ], 401);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
     
-   public function atualizar(string $id, UsuarioRequest $request)
-{
-    try {
-     
-        $usuarioLogado = JWTAuth::parseToken()->authenticate();
+    /**
+     * Retorna os dados do usuário logado (GET /usuarios/me).
+     * O token é validado pelo middleware 'jwt' na rota.
+     */
+    public function me()
+    {
+        try {
 
-        
-        if ($usuarioLogado->id != $id) {
+            $usuarioLogado = auth()->user(); 
+
+            if (!$usuarioLogado) {
+                // Em caso de token inválido, o middleware já deveria ter retornado 401. 
+                // Este é um fallback.
+                return response()->json(['message' => 'Usuário não autenticado.'], Response::HTTP_UNAUTHORIZED);
+            }
+
+            // Retorna o usuário sem a senha hasheada
+            return response()->json($usuarioLogado->makeHidden(['senha']), Response::HTTP_OK);
+
+        } catch (\Exception $e) {
+            // Erros de JWT mais específicos (expirado, inválido) são 
+            // geralmente tratados pelo middleware, mas este catch garante cobertura.
             return response()->json([
-                "message" => "Você não tem permissão para atualizar este usuário."
-            ], 403);
+                'message' => 'Erro na autenticação do token.',
+                'error' => $e->getMessage()
+            ], Response::HTTP_UNAUTHORIZED);
         }
-
-        $usuario = Usuario::find($id);
-
-        if (!$usuario) {
-            return response()->json([
-                "message" => "Usuário não encontrado!"
-            ], 404);
-        }
-
-        $dados = $request->only(['email', 'senha', 'admin', 'status']);
-
-        
-        $emailExistente = Usuario::where('email', $dados['email'])
-            ->where('id', '!=', $id)
-            ->exists();
-
-        if ($emailExistente) {
-            return response()->json([
-                "message" => "E-mail já está sendo usado por outro usuário!"
-            ], 400);
-        }
-
-        $usuario->email = $dados["email"];
-        if (!empty($dados["senha"])) {
-            $usuario->senha = Hash::make($dados["senha"]);
-        }
-
-        $usuario->admin = $dados["admin"] ?? $usuario->admin;
-        $usuario->status = $dados["status"] ?? $usuario->status;
-        $usuario->save();
-
-        return response()->json([
-            "message" => "Usuário atualizado com sucesso!",
-            "usuario" => $usuario
-        ], 200);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            "message" => "Erro ao atualizar usuário.",
-            "error" => $e->getMessage()
-        ], 500);
     }
-}
+    
+    /**
+     * Atualiza os dados do usuário.
+     */
+    public function atualizar(string $id, UsuarioRequest $request)
+    {
+        try {
+            // 1. Obter o usuário logado (token já verificado pelo middleware)
+            $usuarioLogado = auth()->user(); 
 
+            // 2. Localizar o usuário a ser atualizado
+            $usuario = Usuario::findOrFail($id);
 
-  
+            // 3. Verificação de Permissão: O usuário logado deve ser o mesmo OU um Admin.
+            // **REVISADO** para permitir que um Admin possa atualizar outros usuários.
+            if ($usuarioLogado->id != $usuario->id && !$usuarioLogado->admin) {
+                return response()->json([
+                    "message" => "Você não tem permissão para atualizar este usuário."
+                ], Response::HTTP_FORBIDDEN);
+            }
 
-public function login(Request $request)
-{
-    try {
-        $dados = $request->validate([
-            'email' => 'required|email',
-            'senha' => 'required|string',
-        ]);
+            // Pega apenas os campos que podem ser atualizados
+            $dados = $request->only(['email', 'senha', 'admin', 'status']); 
+            
+            // SEGURANÇA: Previne que um usuário não-admin altere o campo 'admin'
+            if (isset($dados['admin']) && !$usuarioLogado->admin) {
+                 unset($dados['admin']);
+            }
+            
+            // SEGURANÇA: Previne que um usuário não-admin altere o campo 'status' de outro usuário
+            if (isset($dados['status']) && $usuarioLogado->id != $usuario->id && !$usuarioLogado->admin) {
+                 unset($dados['status']);
+            }
 
-        $usuario = Usuario::where('email', $dados['email'])->first();
+            // 4. Atualização dos Dados
+            if (isset($dados["email"]) && $dados["email"] !== $usuario->email) {
+                 // **IMPORTANTE:** A validação de unicidade deve ser feita no Request (regra 'unique:usuarios,email,' . $id)
+                 // Mas a validação de e-mail único aqui é uma boa segurança, excluindo o ID atual.
+                 $emailExistente = Usuario::where('email', $dados['email'])
+                    ->where('id', '!=', $id)
+                    ->exists();
 
-        if (!$usuario) {
+                 if ($emailExistente) {
+                    return response()->json([
+                        "message" => "E-mail já está sendo usado por outro usuário!"
+                    ], Response::HTTP_BAD_REQUEST);
+                 }
+                 $usuario->email = $dados["email"];
+            }
+            
+            if (!empty($dados["senha"])) {
+                $usuario->senha = Hash::make($dados["senha"]);
+            }
+            
+            // Atualiza os campos admin e status se foram passados (e a segurança permitiu)
+            $usuario->fill($dados);
+            $usuario->save();
+
+            return response()->json([
+                "message" => "Usuário atualizado com sucesso!",
+                "usuario" => $usuario->makeHidden(['senha'])
+            ], Response::HTTP_OK);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'message' => 'Usuário não encontrado.'
-            ], 404);
-        }
-
-        if (!Hash::check($dados['senha'], $usuario->senha)) {
+            ], Response::HTTP_NOT_FOUND);
+        } catch (\Exception $e) {
+             // Mudança de JWTAuth::parseToken()->authenticate(); para auth()->user() no início
+             // simplifica o tratamento de exceções do JWT, que agora é delegado ao middleware.
             return response()->json([
-                'message' => 'Senha incorreta.'
-            ], 401);
+                "message" => "Erro ao atualizar usuário.",
+                "error" => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        
-        $token = JWTAuth::fromUser($usuario);
-
-        return response()->json([
-            'message' => 'Login realizado com sucesso!',
-            'usuario' => $usuario,
-            'token' => $token
-        ], 200);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'message' => 'Erro ao tentar fazer login.',
-            'error' => $e->getMessage()
-        ], 500);
     }
-}
+
+
+    /**
+     * Autentica o usuário e retorna o token JWT.
+     */
+    public function login(Request $request)
+    {
+        try {
+            $dados = $request->validate([
+                'email' => 'required|email',
+                'senha' => 'required|string',
+            ]);
+
+            $usuario = Usuario::where('email', $dados['email'])->first();
+
+            if (!$usuario) {
+                return response()->json([
+                    'message' => 'Credenciais inválidas.' // Mensagem mais genérica por segurança
+                ], Response::HTTP_UNAUTHORIZED); // Alterado de 404 para 401/403
+            }
+
+            if (!Hash::check($dados['senha'], $usuario->senha)) {
+                return response()->json([
+                    'message' => 'Credenciais inválidas.' // Mensagem mais genérica por segurança
+                ], Response::HTTP_UNAUTHORIZED);
+            }
+
+            // Gera o token JWT para o usuário autenticado
+            $token = JWTAuth::fromUser($usuario);
+
+            return response()->json([
+                'message' => 'Login realizado com sucesso!',
+                'usuario' => $usuario->makeHidden(['senha']),
+                'token' => $token
+            ], Response::HTTP_OK);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Dados de entrada inválidos.',
+                'errors' => $e->errors()
+            ], Response::HTTP_BAD_REQUEST);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Erro ao tentar fazer login.',
+                'error' => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
 
 }

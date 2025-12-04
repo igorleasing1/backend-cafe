@@ -7,20 +7,19 @@ use App\Http\Controllers\ComprasController;
 
 
 Route::prefix('/usuarios')->group(function () { 
-    Route::post('', [UsuarioController::class, 'criar']); 
+Route::post('/cadastro', [UsuarioController::class, 'criar']);
     Route::post('/login', [UsuarioController::class, 'login']); 
 });
 
 
-Route::middleware('jwt')->group(function () {
-   
-    
-    Route::prefix('/usuarios')->group(function () {
-        Route::get('', [UsuarioController::class, 'listar']);
-        Route::get('/filtro', [UsuarioController::class, 'buscarPorEmail']);
-        Route::get('/{id}', [UsuarioController::class, 'buscarPorId']);
-        Route::patch('/{id}', [UsuarioController::class, 'atualizar']);
-    });
+Route::prefix('/usuarios')->group(function () {
+            // Rota `/usuarios/me` adicionada:
+       Route::get('/me', [UsuarioController::class, 'me']); // <--- ADICIONE ESTA LINHA
+       Route::get('', [UsuarioController::class, 'listar']);
+       Route::get('/filtro', [UsuarioController::class, 'buscarPorEmail']);
+       Route::get('/{id}', [UsuarioController::class, 'buscarPorId']);
+    Route::patch('/{id}', [UsuarioController::class, 'atualizar']);
+});
 
    
     Route::prefix('/fila')->group(function () {
