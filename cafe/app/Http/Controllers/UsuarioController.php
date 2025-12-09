@@ -83,24 +83,26 @@ class UsuarioController extends Controller
      */
     public function criar(UsuarioRequest $request)
     {
-        $dados = $request->validated(); // Usa validated() para pegar os dados já validados
+        // Garante que a validação na UsuarioRequest foi executada e retorna os dados
+        $dados = $request->validated(); 
 
         try {
-            // A verificação de e-mail duplicado deve ser feita de preferência na `UsuarioRequest`
-            // usando a regra 'unique:usuarios,email'. A validação explícita abaixo é redundante
-            // se o Request estiver correto, mas pode ser útil como camada extra.
-            
-            // Removendo a checagem manual que é redundante se o Request estiver bem configurado.
-            
             $usuario = new Usuario();
+            
+            // CORREÇÃO ESSENCIAL: O campo 'nome' estava faltando na atribuição
+            $usuario->nome = $dados["nome"]; // <-- ADICIONADO: Pega o nome do formulário
+            
             $usuario->email = $dados["email"];
+            
+            // Criptografa a senha
             $usuario->senha = Hash::make($dados["senha"]); 
             
-            // **CORREÇÃO DE SEGURANÇA:** Não permita que o campo 'admin' seja definido no cadastro público,
-            // a menos que a rota esteja protegida. O '?? false' é crucial.
+            // Campos com valor padrão (Segurança):
             $usuario->admin = $dados["admin"] ?? false; 
             $usuario->status = $dados["status"] ?? "ativo";
-            $usuario->save();
+
+            // Tenta salvar no DB
+            $usuario->save(); 
 
             return response()->json([
                 "message" => "Usuário criado com sucesso!",
@@ -109,6 +111,7 @@ class UsuarioController extends Controller
             ], Response::HTTP_CREATED);
             
         } catch (\Exception $e) {
+            // Este catch agora deve pegar erros de QueryException se houver algum outro campo NOT NULL faltando.
             return response()->json([
                 "message" => "Erro ao criar usuário.",
                 "error" => $e->getMessage()
@@ -123,12 +126,11 @@ class UsuarioController extends Controller
     public function me()
     {
         try {
-
+            // Pega o usuário do token, validado pelo middleware
             $usuarioLogado = auth()->user(); 
 
             if (!$usuarioLogado) {
                 // Em caso de token inválido, o middleware já deveria ter retornado 401. 
-                // Este é um fallback.
                 return response()->json(['message' => 'Usuário não autenticado.'], Response::HTTP_UNAUTHORIZED);
             }
 
@@ -136,8 +138,6 @@ class UsuarioController extends Controller
             return response()->json($usuarioLogado->makeHidden(['senha']), Response::HTTP_OK);
 
         } catch (\Exception $e) {
-            // Erros de JWT mais específicos (expirado, inválido) são 
-            // geralmente tratados pelo middleware, mas este catch garante cobertura.
             return response()->json([
                 'message' => 'Erro na autenticação do token.',
                 'error' => $e->getMessage()
@@ -151,14 +151,13 @@ class UsuarioController extends Controller
     public function atualizar(string $id, UsuarioRequest $request)
     {
         try {
-            // 1. Obter o usuário logado (token já verificado pelo middleware)
+            // 1. Obter o usuário logado
             $usuarioLogado = auth()->user(); 
 
             // 2. Localizar o usuário a ser atualizado
             $usuario = Usuario::findOrFail($id);
 
             // 3. Verificação de Permissão: O usuário logado deve ser o mesmo OU um Admin.
-            // **REVISADO** para permitir que um Admin possa atualizar outros usuários.
             if ($usuarioLogado->id != $usuario->id && !$usuarioLogado->admin) {
                 return response()->json([
                     "message" => "Você não tem permissão para atualizar este usuário."
@@ -166,7 +165,7 @@ class UsuarioController extends Controller
             }
 
             // Pega apenas os campos que podem ser atualizados
-            $dados = $request->only(['email', 'senha', 'admin', 'status']); 
+            $dados = $request->only(['nome', 'email', 'senha', 'admin', 'status']); 
             
             // SEGURANÇA: Previne que um usuário não-admin altere o campo 'admin'
             if (isset($dados['admin']) && !$usuarioLogado->admin) {
@@ -180,16 +179,15 @@ class UsuarioController extends Controller
 
             // 4. Atualização dos Dados
             if (isset($dados["email"]) && $dados["email"] !== $usuario->email) {
-                 // **IMPORTANTE:** A validação de unicidade deve ser feita no Request (regra 'unique:usuarios,email,' . $id)
-                 // Mas a validação de e-mail único aqui é uma boa segurança, excluindo o ID atual.
+                // Garante que o novo e-mail não está sendo usado por outro ID
                  $emailExistente = Usuario::where('email', $dados['email'])
-                    ->where('id', '!=', $id)
-                    ->exists();
+                     ->where('id', '!=', $id)
+                     ->exists();
 
                  if ($emailExistente) {
-                    return response()->json([
-                        "message" => "E-mail já está sendo usado por outro usuário!"
-                    ], Response::HTTP_BAD_REQUEST);
+                     return response()->json([
+                         "message" => "E-mail já está sendo usado por outro usuário!"
+                     ], Response::HTTP_BAD_REQUEST);
                  }
                  $usuario->email = $dados["email"];
             }
@@ -197,8 +195,8 @@ class UsuarioController extends Controller
             if (!empty($dados["senha"])) {
                 $usuario->senha = Hash::make($dados["senha"]);
             }
-            
-            // Atualiza os campos admin e status se foram passados (e a segurança permitiu)
+
+            // Atualiza os outros campos (como nome, admin e status, se passados)
             $usuario->fill($dados);
             $usuario->save();
 
@@ -212,8 +210,6 @@ class UsuarioController extends Controller
                 'message' => 'Usuário não encontrado.'
             ], Response::HTTP_NOT_FOUND);
         } catch (\Exception $e) {
-             // Mudança de JWTAuth::parseToken()->authenticate(); para auth()->user() no início
-             // simplifica o tratamento de exceções do JWT, que agora é delegado ao middleware.
             return response()->json([
                 "message" => "Erro ao atualizar usuário.",
                 "error" => $e->getMessage()
@@ -238,7 +234,7 @@ class UsuarioController extends Controller
             if (!$usuario) {
                 return response()->json([
                     'message' => 'Credenciais inválidas.' // Mensagem mais genérica por segurança
-                ], Response::HTTP_UNAUTHORIZED); // Alterado de 404 para 401/403
+                ], Response::HTTP_UNAUTHORIZED); 
             }
 
             if (!Hash::check($dados['senha'], $usuario->senha)) {
