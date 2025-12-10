@@ -90,7 +90,7 @@ class UsuarioController extends Controller
             $usuario = new Usuario();
             
             // CORREÇÃO ESSENCIAL: O campo 'nome' estava faltando na atribuição
-            $usuario->nome = $dados["nome"]; // <-- ADICIONADO: Pega o nome do formulário
+            $usuario->nome = $dados["name"]; // <-- ADICIONADO: Pega o nome do formulário
             
             $usuario->email = $dados["email"];
             
@@ -266,3 +266,5 @@ class UsuarioController extends Controller
     }
 
 }
+
+;
