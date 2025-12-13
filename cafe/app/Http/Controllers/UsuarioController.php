@@ -52,9 +52,6 @@ class UsuarioController extends Controller
         }
     }
 
-    /**
-     * Busca um usuário pelo email (Query Parameter).
-     */
     public function buscarPorEmail(Request $request)
     {
         $email = $request->query('email');
@@ -78,9 +75,7 @@ class UsuarioController extends Controller
         }
     }
 
-    /**
-     * Cria um novo usuário (Cadastro).
-     */
+
     public function criar(UsuarioRequest $request)
     {
         // Garante que a validação na UsuarioRequest foi executada e retorna os dados

@@ -24,6 +24,10 @@ public function alteradoPor()
 {
     return $this->belongsTo(Usuario::class, 'ultima_alteracao_por');
 }
+public function usuario()
+    {
+        return $this->belongsTo(Usuario::class, 'usuario_id'); 
+    }
 
 
 }
