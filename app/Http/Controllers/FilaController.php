@@ -6,6 +6,7 @@ use App\Http\Requests\FilaRequest;
 use App\Models\Fila;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class FilaController extends Controller
 {
@@ -21,35 +22,42 @@ class FilaController extends Controller
             return response()->json(['message' => 'Erro ao carregar fila.'], 500);
         }
     }
+ public function entrarNaFila(Request $request)
+{
+    try {
+        $usuarioId = auth()->id();
+        $validados = $request->validate([
+            'cafe' => 'sometimes|integer',
+            'filtro' => 'sometimes|integer'
+        ]);
 
-    public function entrarNaFila(FilaRequest $request)
-    {
-        try {
-            $jaEstaNaFila = Fila::where('usuario_id', $request->usuario_id)->exists();
-            if ($jaEstaNaFila) {
-                return response()->json(['message' => 'Usuário já está na fila.'], 400);
-            }
+        // 1. IMPORTANTE: Remove qualquer registro antigo (inclusive os "soft deleted")
+        // Isso limpa o erro de "Duplicate entry" definitivamente
+        \App\Models\Fila::where('usuario_id', $usuarioId)->forceDelete();
 
-            // Regra: Não pode entrar só com filtro
-            if ($request->tipo_item === 'filtro') {
-                return response()->json(['message' => 'Adicione um café antes do filtro.'], 400);
-            }
+        // 2. Calcula a nova posição (opcional, para manter a ordem)
+        $proximaPosicao = (\App\Models\Fila::max('posicao') ?? 0) + 1;
 
-            $ultimaPosicao = Fila::max('posicao') ?? 0;
-            
-            $fila = Fila::create([
-                'usuario_id' => $request->usuario_id,
-                'posicao' => $ultimaPosicao + 1,
-                'cafe' => $request->tipo_item === 'cafe' ? 1 : 0,
-                'filtro' => 0
-            ]);
+        // 3. Cria o novo registro limpo
+        $itemFila = \App\Models\Fila::create([
+            'usuario_id' => $usuarioId,
+            'cafe' => $validados['cafe'] ?? 0,
+            'filtro' => $validados['filtro'] ?? 0,
+            'posicao' => $proximaPosicao
+        ]);
 
-            return response()->json(['message' => 'Entrou na fila!', 'dados' => $fila], 201);
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Erro ao entrar na fila.'], 500);
-        }
+        return response()->json([
+            'message' => 'Entrou na fila com sucesso!',
+            'item' => $itemFila
+        ], 201);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Erro ao entrar na fila.',
+            'error' => $e->getMessage()
+        ], 500);
     }
-
+}
     public function atualizarItem(Request $request, $usuario_id)
 {
     try {
@@ -96,23 +104,19 @@ public function removerItem(Request $request, $usuario_id)
     }
 }
 
-    public function sairDaFila(int $usuario_id)
-    {
-        DB::beginTransaction();
-        try {
-            $fila = Fila::where('usuario_id', $usuario_id)->first();
-            if (!$fila) return response()->json(['message' => 'Não encontrado'], 404);
+    public function sairDaFila($usuario_id)
+{
+    try {
+        // Use where()->delete() para garantir que remove pelo ID do usuário
+        $removido = Fila::where('usuario_id', $usuario_id)->delete();
 
-            $posicaoRemovida = $fila->posicao;
-            $fila->delete();
-
-            Fila::where('posicao', '>', $posicaoRemovida)->decrement('posicao');
-
-            DB::commit();
-            return response()->json(['message' => 'Saiu da fila com sucesso!']);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json(['message' => 'Erro ao sair.'], 500);
+        if (!$removido) {
+            return response()->json(['message' => 'Usuário não estava na fila.'], 404);
         }
+
+        return response()->json(['message' => 'Removido com sucesso.'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Erro ao remover.'], 500);
     }
+}
 }

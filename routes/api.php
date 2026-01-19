@@ -14,11 +14,14 @@ Route::middleware('auth:api')->group(function () {
     
     // Usuários
     Route::prefix('/usuarios')->group(function () {
-        Route::get('/me', [UsuarioController::class, 'me']);
-        Route::get('', [UsuarioController::class, 'listar']); // Adicione middleware de admin aqui se desejar
-        Route::get('/filtro', [UsuarioController::class, 'buscarPorEmail']);
-        Route::get('/{id}', [UsuarioController::class, 'buscarPorId']);
-        Route::patch('/{id}', [UsuarioController::class, 'atualizar']);
+Route::get('me', [UsuarioController::class, 'me']);
+    Route::get('gerenciar', [UsuarioController::class, 'listarGerenciamento']); 
+    Route::get('/', [UsuarioController::class, 'listar']); 
+    Route::get('filtro', [UsuarioController::class, 'buscarPorEmail']);
+    Route::get('{id}', [UsuarioController::class, 'buscarPorId']);
+    Route::patch('{id}', [UsuarioController::class, 'atualizar']);
+    Route::delete('{id}', [UsuarioController::class, 'excluir']);
+   
     });
 
     // Fila

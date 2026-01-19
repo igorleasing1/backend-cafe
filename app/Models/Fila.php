@@ -1,6 +1,5 @@
 <?php
 
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -16,7 +15,14 @@ class Fila extends Model
     public $timestamps = true;
 
     protected $dates = ['deleted_at'];
-    protected $fillable = ['usuario_id', 'posicao'];
+
+
+    protected $fillable = [
+        'usuario_id', 
+        'posicao', 
+        'cafe', 
+        'filtro'
+    ];
 
     public function usuario(): BelongsTo
     {

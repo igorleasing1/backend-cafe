@@ -30,6 +30,60 @@ class UsuarioController extends Controller
         }
     }
 
+/**
+ * Lista todos os usuários com detalhes para o Painel Admin.
+ */
+public function listarGerenciamento()
+{
+    try {
+        $adminLogado = auth()->user();
+        
+        // Reforço de segurança: verifica se quem pede é admin
+        if (!$adminLogado || !$adminLogado->admin) {
+            return response()->json(['message' => 'Acesso negado.'], Response::HTTP_FORBIDDEN);
+        }
+
+        // Busca todos os usuários ordenados por nome
+        $usuarios = Usuario::orderBy('nome', 'asc')->get();
+        
+        return response()->json($usuarios->makeHidden(['senha']), Response::HTTP_OK);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Erro ao listar usuários para gerenciamento.',
+            'error' => $e->getMessage()
+        ], Response::HTTP_INTERNAL_SERVER_ERROR);
+    }
+}
+
+/**
+ * Remove um usuário permanentemente.
+ */
+public function excluir(string $id)
+{
+    try {
+        $adminLogado = auth()->user();
+
+        // Segurança: Apenas admin pode excluir
+        if (!$adminLogado->admin) {
+            return response()->json(['message' => 'Acesso negado.'], Response::HTTP_FORBIDDEN);
+        }
+
+        // Segurança: Impede que o admin exclua a si próprio
+        if ($adminLogado->id == $id) {
+            return response()->json(['message' => 'Você não pode excluir sua própria conta.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $usuario = Usuario::findOrFail($id);
+        $usuario->delete();
+
+        return response()->json(['message' => 'Usuário removido com sucesso!'], Response::HTTP_OK);
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json(['message' => 'Usuário não encontrado.'], Response::HTTP_NOT_FOUND);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Erro ao excluir usuário.'], 500);
+    }
+}
+    
     /**
      * Busca um usuário pelo ID.
      */

@@ -17,39 +17,46 @@ class UsuarioRequest extends FormRequest
      *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
      */
-    public function rules(): array
-    {
-        return [
-            'nome' => 'required|string|max:255',
-            'senha' => [
-                'required',
-                'string',
-                'min:8',
-                'regex:/[A-Z]/',     
-                'regex:/[a-z]/',      
-                'regex:/[0-9]/',   
-                'regex:/[@$!%*?&#^()_+\-=\[\]{};:"\\|,.<>\/?]/'
-            ],
-            'email' => [
-                'required',
-                'string',
-                'email',
-                'max:255',
-                'unique:usuarios,email', 
-            ],
+   public function rules(): array
+{
+    // Captura o ID do usuário da rota para ignorar na validação de e-mail único
+    $usuarioId = $this->route('id');
+
+    // Regras básicas para criação (POST)
+    $rules = [
+        'nome' => 'required|string|max:255',
+        'email' => 'required|string|email|max:255|unique:usuarios,email',
+        'senha' => [
+            'required',
+            'string',
+            'min:8',
+            'regex:/[A-Z]/', 
+            'regex:/[a-z]/',      
+            'regex:/[0-9]/',   
+            'regex:/[@$!%*?&#^()_+\-=\[\]{};:"\\|,.<>\/?]/'
+        ],
+        'admin' => 'sometimes|boolean',
+        'status' => 'sometimes|string'
+    ];
+
+    // Se for uma atualização (PATCH ou PUT)
+    if ($this->isMethod('patch') || $this->isMethod('put')) {
+        // Torna os campos opcionais usando 'sometimes'
+        $rules['nome'] = 'sometimes|string|max:255';
+        $rules['senha'] = [
+            'sometimes', // Valida apenas se o campo for enviado
+            'nullable',  // Permite que seja nulo (vazio)
+            'string',
+            'min:8',
+            'regex:/[A-Z]/', 
+            'regex:/[a-z]/',      
+            'regex:/[0-9]/',   
+            'regex:/[@$!%*?&#^()_+\-=\[\]{};:"\\|,.<>\/?]/'
         ];
+        // Permite o e-mail atual do próprio usuário ao verificar 'unique'
+        $rules['email'] = 'sometimes|string|email|max:255|unique:usuarios,email,' . $usuarioId;
     }
 
-    public function messages(): array
-    {
-        return [
-            'senha.required' => 'O campo senha é obrigatório.',
-            'senha.min' => 'A senha deve ter no mínimo 8 caracteres.',
-            'senha.regex' => 'A senha deve conter pelo menos uma letra maiúscula, uma minúscula, um número e um caractere especial.',
-            'email.required' => 'O campo e-mail é obrigatório.',
-            'email.email' => 'Informe um e-mail válido.',
-            'email.max' => 'O e-mail não pode ter mais de 255 caracteres.',
-            'email.unique' => 'Este e-mail já está cadastrado.',
-        ];
-    }
+    return $rules;
+}
 }
