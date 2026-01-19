@@ -52,6 +52,9 @@ class UsuarioController extends Controller
         }
     }
 
+    /**
+     * Busca um usuário pelo email (Query Parameter).
+     */
     public function buscarPorEmail(Request $request)
     {
         $email = $request->query('email');
@@ -75,7 +78,9 @@ class UsuarioController extends Controller
         }
     }
 
-
+    /**
+     * Cria um novo usuário (Cadastro).
+     */
     public function criar(UsuarioRequest $request)
     {
         // Garante que a validação na UsuarioRequest foi executada e retorna os dados
@@ -84,12 +89,11 @@ class UsuarioController extends Controller
         try {
             $usuario = new Usuario();
             
-            // CORREÇÃO ESSENCIAL: O campo 'nome' estava faltando na atribuição
-            $usuario->nome = $dados["name"]; // <-- ADICIONADO: Pega o nome do formulário
+        
+            $usuario->nome = $dados["nome"]; 
             
             $usuario->email = $dados["email"];
             
-            // Criptografa a senha
             $usuario->senha = Hash::make($dados["senha"]); 
             
             // Campos com valor padrão (Segurança):
@@ -261,5 +265,3 @@ class UsuarioController extends Controller
     }
 
 }
-
-;
